@@ -142,21 +142,14 @@ def TISS(K,phi):
 	return np.sqrt(1/in_T)
 	
 
-
+#-----------------------------------------------------------------------------------------------------------------------------------------------
 #Read in known values for par file (from ATNF)
 par = "J0737-3039A.par"
 
-psrm = get_model(par)
+psr_m = get_model(par)
 
 
-#In future probably want to read these values from the parameter file
-PB = 0.10225156247*u.day
-A1 = 1.415032*lt_s
-SINI = 0.99974
-ECC = 0.0877775
-OM = 87.0331*u.deg
-
-SMA = A1/SINI #convert projected semi major axis to actual value
+SMA = (psr_m.A1.quantity/psr_m.SINI.quantity) #convert projected semi major axis to actual value
 
 #Fitted values from Table 3 of Rickett et al 2014
 i = 88.7*u.deg
@@ -168,7 +161,7 @@ VIS = np.array([-21,29])*u.km/u.s
 s0 = 4.2e6*u.m
 
 
-psr = SkyCoord(ra='7h37m51.248419s', dec='-30d39m40.71431s', pm_ra_cosdec=-3.82*u.mas/u.year, pm_dec=2.13*u.mas/u.year, distance=1150*u.pc)
+psr = SkyCoord(ra=str(psr_m.RAJ.quantity), dec=str(psr_m.DECJ.quantity), pm_ra_cosdec=psr_m.PMRA.quantity, pm_dec=psr_m.PMDEC.quantity, distance=1150*u.pc)
 
 #if I put this into the pulsar frame it seems that dy and dz are the Valpha and Vdelta (approximately)
 
@@ -198,7 +191,7 @@ VC = SystemVel(VP,VE,VIS,s)
 
 
 #Calculate K coefficients
-Ks0 = K_coeffs(OrbitMeanVel(PB,SMA,ECC),VC,Q_coeff(R,PsiAR),i,OM,ECC,s0/(1-s))
+Ks0 = K_coeffs(OrbitMeanVel(psr_m.PB.quantity,SMA,psr_m.ECC.quantity),VC,Q_coeff(R,PsiAR),i,psr_m.OM.quantity,psr_m.ECC.quantity,s0/(1-s))
 #print('K Coefficients with Paper Pulsar PM', Ks0)
 
 
@@ -214,22 +207,22 @@ Ks1 = K_coeffs(OrbitMeanVel(PB,SMA,ECC),VC,Q_coeff(R,PsiAR),i,OM,ECC,s0/(1-s))
 print('K Coefficients with ATNF Pulsar PM', Ks1)
 """
 
-"""
+
 phi = np.linspace(0,360,360)
 phi = np.radians(phi)
 
 TS_plot = []
-R_plot = []
+#R_plot = []
 
 for angle in phi:
 	TS_plot.append(TISS(Ks0,angle))
-	R_plot.append(TISS(Ks1,angle))
+#	R_plot.append(TISS(Ks1,angle))
 	#R_plot.append(TISS([0.29e-4*u.s*u.s,0.16e-4*u.s*u.s,-0.00e-4*u.s*u.s,-0.01e-4*u.s*u.s,-0.26e-4*u.s*u.s],angle))
 
 ax = plt.subplot(111)
 ax.plot(np.degrees(phi),TS_plot, label='Rickett Pulsar PM')
-ax.plot(np.degrees(phi),R_plot, label='ATNF Pulsar PM')
+#ax.plot(np.degrees(phi),R_plot, label='ATNF Pulsar PM')
 ax.legend()
 plt.show()
-"""
+
 
