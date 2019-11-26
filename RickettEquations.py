@@ -5,6 +5,9 @@ from astropy import units as u
 from astropy.coordinates import EarthLocation, SkyOffsetFrame, SkyCoord
 from astropy.time import Time
 from pint.models import get_model
+from pint import toa
+from matplotlib.ticker import MultipleLocator
+import math
 
 
 """TODO:
@@ -142,7 +145,10 @@ def TISS(K,phi):
 	return np.sqrt(1/in_T)
 	
 
-#-----------------------------------------------------------------------------------------------------------------------------------------------
+#----------------------------------------
+# Set up binary pulsar parameters	#
+#----------------------------------------
+
 #Read in known values for par file (from ATNF)
 par = "J0737-3039A.par"
 
@@ -150,6 +156,42 @@ psr_m = get_model(par)
 
 
 SMA = (psr_m.A1.quantity/psr_m.SINI.quantity) #convert projected semi major axis to actual value
+
+psr = SkyCoord(ra=str(psr_m.RAJ.quantity), dec=str(psr_m.DECJ.quantity), pm_ra_cosdec=psr_m.PMRA.quantity, pm_dec=psr_m.PMDEC.quantity, distance=1150*u.pc)
+
+#if I put this into the pulsar frame it seems that dy and dz are the Valpha and Vdelta
+
+psr_frame = SkyOffsetFrame(origin=psr, rotation=0*u.deg) 
+pm_psr = psr.transform_to(psr_frame).cartesian.differentials['s']
+
+
+#--------------------------------------
+# Set up PINT binary model	      #
+#--------------------------------------
+
+
+t = toa.make_fake_toas(53467,53468,100,psr_m,freq=820,obs="GBT")
+"""
+times = []
+
+for i in range(10):
+	times.append(toa.TOA(Time(53467,format='mjd')+i*psr_m.PB.quantity/10,error=0.0,obs='GBT',freq=820))
+
+t = toa.get_TOAs_list(times,ephem='DE436') 
+"""
+
+#psr_m.phase(t) #should give the orbital phase as a function of time
+
+psr_m.delay(t)
+bm = psr_m.binary_instance
+
+#NOTE: You can only get these binary model values IFF you call psr_m.delay(t) first!!!
+
+#bm.nu() #this should give the true anomaly
+#bm.orbits() #this gives the number of orbits
+#bm.omega() # I think this gives the longitude of periastron
+
+#----------------------------------------------------------
 
 #Fitted values from Table 3 of Rickett et al 2014
 i = 88.7*u.deg
@@ -160,14 +202,7 @@ PsiAR = 47*u.deg
 VIS = np.array([-21,29])*u.km/u.s
 s0 = 4.2e6*u.m
 
-
-psr = SkyCoord(ra=str(psr_m.RAJ.quantity), dec=str(psr_m.DECJ.quantity), pm_ra_cosdec=psr_m.PMRA.quantity, pm_dec=psr_m.PMDEC.quantity, distance=1150*u.pc)
-
-#if I put this into the pulsar frame it seems that dy and dz are the Valpha and Vdelta (approximately)
-
-psr_frame = SkyOffsetFrame(origin=psr, rotation=0*u.deg) 
-pm_psr = psr.transform_to(psr_frame).cartesian.differentials['s']
-
+#----------------------------------------------------------
 
 #This is where I will use the functions to calculate the things
 Qabc = Q_coeff(R,PsiAR)
@@ -203,7 +238,7 @@ print('Pulsar Velocity:',VP)
 
 VC = SystemVel(VP,VE,VIS,s)
 
-Ks1 = K_coeffs(OrbitMeanVel(PB,SMA,ECC),VC,Q_coeff(R,PsiAR),i,OM,ECC,s0/(1-s))
+Ks1 = K_coeffs(OrbitMeanVel(psr_m.PB.quantity,SMA,psr_m.ECC.quantity),VC,Q_coeff(R,PsiAR),i,psr_m.OM.quantity,psr_m.ECC.quantity,s0/(1-s))
 print('K Coefficients with ATNF Pulsar PM', Ks1)
 """
 
@@ -211,17 +246,29 @@ print('K Coefficients with ATNF Pulsar PM', Ks1)
 phi = np.linspace(0,360,360)
 phi = np.radians(phi)
 
+phi0 = (bm.nu() + bm.omega())%(2*math.pi)
+
 TS_plot = []
-#R_plot = []
+R_plot = []
 
 for angle in phi:
-	TS_plot.append(TISS(Ks0,angle))
-#	R_plot.append(TISS(Ks1,angle))
-	#R_plot.append(TISS([0.29e-4*u.s*u.s,0.16e-4*u.s*u.s,-0.00e-4*u.s*u.s,-0.01e-4*u.s*u.s,-0.26e-4*u.s*u.s],angle))
+	#TS_plot.append(TISS(Ks0,angle))
+	#R_plot.append(TISS(Ks1,angle))
+	R_plot.append(TISS([3.25e-4*u.s*u.s,-1.57e-4*u.s*u.s,-0.05e-4*u.s*u.s,0.01e-4*u.s*u.s,-2.57e-4*u.s*u.s],angle))
+
+for angle in phi0:
+	TS_plot.append(TISS([3.25e-4*u.s*u.s,-1.57e-4*u.s*u.s,-0.05e-4*u.s*u.s,0.01e-4*u.s*u.s,-2.57e-4*u.s*u.s],angle))
 
 ax = plt.subplot(111)
-ax.plot(np.degrees(phi),TS_plot, label='Rickett Pulsar PM')
-#ax.plot(np.degrees(phi),R_plot, label='ATNF Pulsar PM')
+plt.grid(linestyle='dotted')
+plt.xlabel('Orbital Phase (deg)')
+plt.ylabel('ISS Timescale (sec)')
+ax.xaxis.set_major_locator(MultipleLocator(90))
+ax.yaxis.set_major_locator(MultipleLocator(50))
+plt.ylim(0,200)
+#plt.xlim(0,360)
+ax.plot(np.degrees(phi0),TS_plot, 'ro', label='Calculated Angle')
+ax.plot(np.degrees(phi),R_plot, label='Rickett Angle')
 ax.legend()
 plt.show()
 
