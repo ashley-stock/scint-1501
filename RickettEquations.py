@@ -61,7 +61,7 @@ def EarthVelocity(t,site,psr,rot):
 	Parameters:
 		t: the time of the observation, astropy time format
 		site: the name of the observatory where data was taken, a string
-		psr: a SkyCoordinate object represe
+		psr: a SkyCoordinate object representation of the pulsar
 	Returns:
 		VE: a two element np array which gives earth velocity in RA and DEC directions 
 	"""
@@ -73,7 +73,17 @@ def EarthVelocity(t,site,psr,rot):
 	return vel.d_xyz.to(u.km/u.s)
 
 def PulsarBCVelocity(psr):
-	return psr.cartesian.differentials['s'].d_xyz.to(u.km/u.s)
+	"""This function calculates and returns the proper motion of the barycentre
+	of the pulsar binary system.	
+	Parameters:
+		psr: a SkyCoordinate object representation of the pulsar 
+	Returns:
+		pm_psr: 3D pulsar barycentre proper motion
+	"""
+	psr_frame = SkyOffsetFrame(origin=psr, rotation=0*u.deg) 
+	#if I put this into the pulsar frame it seems that dy and dz are the Valpha and Vdelta
+	pm_psr = psr.transform_to(psr_frame).cartesian.differentials['s']
+	return pm_psr
 	
 
 def RotateVector(v,angle):
@@ -167,55 +177,10 @@ def uw_fit(VC,m,bm,V0,Qabc,i):
 	w = Qabc[2]/math.sqrt(Qabc[0]*Qabc[1])
 	return [ux,uy,w] 	
 
-#----------------------------------------
-# Set up binary pulsar parameters	#
-#----------------------------------------
 
-#Read in known values for par file (from ATNF)
-par = "J0737-3039A.par"
-
-psr_m = get_model(par)
-
-
-SMA = (psr_m.A1.quantity/psr_m.SINI.quantity) #convert projected semi major axis to actual value
-
-psr = SkyCoord(ra=str(psr_m.RAJ.quantity), dec=str(psr_m.DECJ.quantity), pm_ra_cosdec=psr_m.PMRA.quantity, pm_dec=psr_m.PMDEC.quantity, distance=1150*u.pc)
-
-#if I put this into the pulsar frame it seems that dy and dz are the Valpha and Vdelta
-
-psr_frame = SkyOffsetFrame(origin=psr, rotation=0*u.deg) 
-pm_psr = psr.transform_to(psr_frame).cartesian.differentials['s']
-
-
-#--------------------------------------
-# Set up PINT binary model	      #
-#--------------------------------------
-
-
-t = toa.make_fake_toas(52997,53560,563,psr_m,freq=820,obs="GBT")
-"""
-times = []
-
-for i in range(10):
-	times.append(toa.TOA(Time(53467,format='mjd')+i*psr_m.PB.quantity/10,error=0.0,obs='GBT',freq=820))
-
-t = toa.get_TOAs_list(times,ephem='DE436') 
-"""
-
-#psr_m.phase(t) #should give the orbital phase as a function of time
-
-psr_m.delay(t)
-bm = psr_m.binary_instance
-
-#NOTE: You can only get these binary model values IFF you call psr_m.delay(t) first!!!
-
-#bm.nu() #this should give the true anomaly
-#bm.orbits() #this gives the number of orbits
-#bm.omega() # I think this gives the longitude of periastron
-
-#----------------------------------------------------------
-
+#-------------------------------------------------
 #Fitted values from Table 3 of Rickett et al 2014
+#-------------------------------------------------
 i = 90.0*u.deg
 s = 0.71
 Oangle = 69*u.deg
@@ -223,27 +188,51 @@ R = 0.76
 PsiAR = 72*u.deg
 VIS = np.array([-12,50])*u.km/u.s
 s0 = 8.4e6*u.m
+#-------------------------------------------------
+# Other constant values
+#-------------------------------------------------
+par = "J0737-3039A.par" #parameter file from ATNF
+t_start = 52997
+t_end = 53560
+t_nsteps = 563
 
-#----------------------------------------------------------
+#----------------------------------------
+# Set up binary pulsar parameters	#
+#----------------------------------------
+
+psr_m = get_model(par)#Read in known values for par file (from ATNF)
+
+
+SMA = (psr_m.A1.quantity/psr_m.SINI.quantity) #convert projected semi major axis to actual value
+
+psr = SkyCoord(ra=str(psr_m.RAJ.quantity), dec=str(psr_m.DECJ.quantity), pm_ra_cosdec=psr_m.PMRA.quantity, pm_dec=psr_m.PMDEC.quantity, distance=1150*u.pc)
+
+
+#--------------------------------------
+# Set up PINT binary model	      #
+#--------------------------------------
+
+t = toa.make_fake_toas(t_start,t_end,t_nsteps,psr_m,freq=820,obs="GBT")
+
+psr_m.delay(t) #NOTE: You can only get binary model values IFF you call psr_m.delay(t) first!!!
+bm = psr_m.binary_instance
+
+
+
 
 #This is where I will use the functions to calculate the things
 Qabc = Q_coeff(R,PsiAR)
-#print(Qabc)
 
-#times = Time(np.array(range(52997,53560)),format='mjd')
-times = Time(np.array(range(52997,53560)), format = 'mjd')
+times = Time(np.array(range(t_start,t_end)), format = 'mjd')
 
+#TODO: Make this into a system velocity function (or incorporate?)
 
 #Calculate System Velocity
-#VE = EarthVelocity(Time(53211.5,format='mjd'),'gbt',psr,0*u.deg)[1:3]
 
 VE = []
 for t in times:
 	VE.append(RotateVector(EarthVelocity(t,'gbt',psr,0*u.deg)[1:3],Oangle))
 VE = np.array(VE)
-
-
-#print('Earth Velocity: ', VE)
 
 VP = np.array([-17.8,11.6])*u.km/u.s #Just use values from paper for now
 #Otherwise
@@ -251,10 +240,9 @@ VP = np.array([-17.8,11.6])*u.km/u.s #Just use values from paper for now
 
 #rotate pulsar velocity by Oangle
 VP = RotateVector(VP,Oangle)
-#print('Pulsar Velocity:',VP)
 
 VC = np.array(SystemVel(VP,VE,VIS,s))*u.km/u.s
-#print(VC)
+
 
 
 
@@ -275,6 +263,7 @@ Ks1 = K_coeffs(OrbitMeanVel(psr_m.PB.quantity,SMA,psr_m.ECC.quantity),VC,Q_coeff
 print('K Coefficients with ATNF Pulsar PM', Ks1)
 """
 
+#TODO: Make this into some sort of plotting function
 """
 #This is currently set up to plot the fitted harmonic coefficients to the timescale on MJD53211
 #It also includes calculations of what the harmonic coefficients would be from the fitted parameters
@@ -319,34 +308,32 @@ plt.show()
 
 """
 
-
+#TODO: Make this into some sort of plotting function
 u = uw_fit(VC,psr_m,bm,OrbitMeanVel(psr_m.PB.quantity,SMA,psr_m.ECC.quantity),Qabc,i)
 
-times = np.array(range(-3,560))
-#print(times.shape)
-#print(u[0].shape)
+times = np.array(range(t_start-53000,t_end-53000))
 
 plt.plot(times,4*u[0]+2*u[2]*u[1],label='ks fit')
 plt.plot(times,-1-2*u[0]*u[0]-2*u[2]*u[0]*u[1]-2*u[1]*u[1],label='k0 fit')
 
 
-
+#observation days from Table 1
 obs_day = [-3,211,311,379,467,202,203,274,312,319,374,378,415,451,462,505,560]
+
+#k_fit[0] is K0 (col. 1 of Table 1), k_fit[1] is Ks (col.2 of Table 1), k_fit[2] is Kc2 (col. 5 of Table 1)
 k_fit = np.array([[3.46,3.79,4.76,6.19,3.25,0.96,0.89,0.92,1.35,1.41,0.91,0.94,0.74,0.84,0.74,0.54,0.29],[-2.63,0.70,-3.63,-6.74,-1.57,0.41,0.29,-0.40,-1.23,-1.39,-1.02,-1.05,-0.80,-0.71,-0.60,0.06,0.16],[-2.77,-3.51,-4.02,-4.40,-2.57,-1.07,-0.86,-0.84,-1.15,-1.13,-0.59,-0.62,-0.53,-0.67,-0.58,-0.49,-0.26]])
-k_error = np.array([[0.06,0.10,0.13,0.14,0.08,0.09,0.05,0.06,0.06,0.05,0.05,0.03,0.04,0.03,0.02,0.03,0.01],[0.08,0.11,0.16,0.19,0.10,0.15,0.07,0.08,0.07,0.07,0.09,0.05,0.06,0.05,0.03,0.04,0.02],[0.06,0.10,0.12,0.12,0.08,0.12,0.05,0.06,0.06,0.05,0.06,0.03,0.04,0.04,0.02,0.04,0.01]])
+
+#k_err[0] is K0 (col. 1 of Table 1), k_err[1] is Ks (col.2 of Table 1), k_err[2] is Kc2 (col. 5 of Table 1)
+k_err = np.array([[0.06,0.10,0.13,0.14,0.08,0.09,0.05,0.06,0.06,0.05,0.05,0.03,0.04,0.03,0.02,0.03,0.01],[0.08,0.11,0.16,0.19,0.10,0.15,0.07,0.08,0.07,0.07,0.09,0.05,0.06,0.05,0.03,0.04,0.02],[0.06,0.10,0.12,0.12,0.08,0.12,0.05,0.06,0.06,0.05,0.06,0.03,0.04,0.04,0.02,0.04,0.01]])
 
 k0 = k_fit[0]/k_fit[2]
-k0_error = k0*(k_error[0]/k_fit[0] + k_error[2]/k_fit[2])
+k0_error = k0*(k_err[0]/k_fit[0] + k_err[2]/k_fit[2])
 
 ks = k_fit[1]/k_fit[2]
-ks_error = ks*(k_error[1]/k_fit[1] + k_error[2]/k_fit[2])
+ks_error = ks*(k_err[1]/k_fit[1] + k_err[2]/k_fit[2])
 
 
 plt.errorbar(obs_day,k0,yerr=k0_error, fmt='o', label='k0')
 plt.errorbar(obs_day,ks,yerr=ks_error, fmt='o',label='ks')
 plt.legend()
 plt.show()
-
-
-
-
