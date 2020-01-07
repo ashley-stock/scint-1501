@@ -97,21 +97,38 @@ def RotateVector(v,angle):
 	new_v = [np.sin(angle)*v[0] + np.cos(angle)*v[1],-np.cos(angle)*v[0]+np.sin(angle)*v[1]]
 	return [new_v[0].value, new_v[1].value]*u.km/u.s
 
-def SystemVel(VP,VE,VIS,s):
+
+def SystemVel(t_start,t_end,s,Oangle,psr):
 	"""This function calculates the system velocity in the pulsar frame
 	as defined in equation 6 of Rickett et al. 2014.
 	Parameters:
-		VP: transverse velocity of the orbit barycentre, np array with two floats
-		VE: transverse earth velocity, np array with two floats
-		VIS: transerve interstellar medium velocity, np array with two floats
-		s: fractional distance from the pulsar to the scintillation screen, float
+
 	Returns:
 		VC: np array with two floats, representing x and y tranverse system velocity
-	"""
+	"""	
+	times = Time(np.array(range(t_start,t_end)), format = 'mjd')
+	print('Times: ', times)
+	
+	#Calculate Earth velocity
+	VE = []
+	for t in times:
+		VE.append(RotateVector(EarthVelocity(t,'gbt',psr,0*u.deg)[1:3],Oangle))
+	VE = np.array(VE)
+	print(VE)
+
+	#Calculate pulsar velocity
+	VP = np.array([-17.8,11.6])*u.km/u.s #Just use values from paper for now
+	#Otherwise
+	#VP = PulsarBCVelocity(psr)[1:3] 
+
+	#rotate pulsar velocity by Oangle
+	VP = RotateVector(VP,Oangle)
+
 	VC = []
 	for v in VE:
 		VC.append(np.add(np.add(VP,v*u.km/u.s*s/(1-s)),-VIS/(1-s)))
-	return VC
+	return np.array(VC)*u.km/u.s
+
 
 def K_coeffs(V0,VC,Qabc,i,omega,ecc,sp):
 	"""This function calculates the orbital harmonic coefficients for the scintillation
@@ -192,9 +209,9 @@ s0 = 8.4e6*u.m
 # Other constant values
 #-------------------------------------------------
 par = "J0737-3039A.par" #parameter file from ATNF
-t_start = 52997
-t_end = 53560
-t_nsteps = 563
+t_start = 52997#52997
+t_end = 53000#53560
+t_nsteps = 3#563
 
 #----------------------------------------
 # Set up binary pulsar parameters	#
@@ -207,7 +224,15 @@ SMA = (psr_m.A1.quantity/psr_m.SINI.quantity) #convert projected semi major axis
 
 psr = SkyCoord(ra=str(psr_m.RAJ.quantity), dec=str(psr_m.DECJ.quantity), pm_ra_cosdec=psr_m.PMRA.quantity, pm_dec=psr_m.PMDEC.quantity, distance=1150*u.pc)
 
+VC = SystemVel(t_start,t_end,s,Oangle,psr)
 
+"""
+#VC[215] gives MJD 53211
+#Calculate K coefficients
+Ks0 = K_coeffs(OrbitMeanVel(psr_m.PB.quantity,SMA,psr_m.ECC.quantity),VC[0],Q_coeff(R,PsiAR),i,psr_m.OM.quantity,psr_m.ECC.quantity,s0/(1-s))
+print('K Coefficients with Paper Pulsar PM', Ks0)
+"""
+"""
 #--------------------------------------
 # Set up PINT binary model	      #
 #--------------------------------------
@@ -217,38 +242,10 @@ t = toa.make_fake_toas(t_start,t_end,t_nsteps,psr_m,freq=820,obs="GBT")
 psr_m.delay(t) #NOTE: You can only get binary model values IFF you call psr_m.delay(t) first!!!
 bm = psr_m.binary_instance
 
-
-
-
 #This is where I will use the functions to calculate the things
 Qabc = Q_coeff(R,PsiAR)
+"""
 
-times = Time(np.array(range(t_start,t_end)), format = 'mjd')
-
-#TODO: Make this into a system velocity function (or incorporate?)
-
-#Calculate System Velocity
-
-VE = []
-for t in times:
-	VE.append(RotateVector(EarthVelocity(t,'gbt',psr,0*u.deg)[1:3],Oangle))
-VE = np.array(VE)
-
-VP = np.array([-17.8,11.6])*u.km/u.s #Just use values from paper for now
-#Otherwise
-#VP = PulsarBCVelocity(psr)[1:3] 
-
-#rotate pulsar velocity by Oangle
-VP = RotateVector(VP,Oangle)
-
-VC = np.array(SystemVel(VP,VE,VIS,s))*u.km/u.s
-
-
-
-
-#Calculate K coefficients
-Ks0 = K_coeffs(OrbitMeanVel(psr_m.PB.quantity,SMA,psr_m.ECC.quantity),VC[215],Q_coeff(R,PsiAR),i,psr_m.OM.quantity,psr_m.ECC.quantity,s0/(1-s))
-print('K Coefficients with Paper Pulsar PM', Ks0)
 
 
 
@@ -308,6 +305,7 @@ plt.show()
 
 """
 
+"""
 #TODO: Make this into some sort of plotting function
 u = uw_fit(VC,psr_m,bm,OrbitMeanVel(psr_m.PB.quantity,SMA,psr_m.ECC.quantity),Qabc,i)
 
@@ -337,3 +335,5 @@ plt.errorbar(obs_day,k0,yerr=k0_error, fmt='o', label='k0')
 plt.errorbar(obs_day,ks,yerr=ks_error, fmt='o',label='ks')
 plt.legend()
 plt.show()
+
+"""
