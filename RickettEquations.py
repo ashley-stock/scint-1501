@@ -12,11 +12,32 @@ from astropy.table import Table
 
 
 """TODO:
--clean up code so it does less unnecessary stuff
 -make more self-consistent with units?
 """
 
+#-------------------------------------------------------------------------------------
+#Fitted values from Table 3 of Rickett et al 2014
+#-------------------------------------------------------------------------------------
+i = 88.7*u.deg
+s = 0.71
+Oangle = 61*u.deg
+R = 0.19
+PsiAR = 47*u.deg
+VIS = np.array([-21,29])*u.km/u.s
+s0 = 4.2e6*u.m
+#--------------------------------------------------------------------------------------
+# Other constant values
+#--------------------------------------------------------------------------------------
+par = "J0737-3039A.par" #parameter file from ATNF
+t_start = 53467 #52997
+t_end = 53468 #53560
+t_nsteps = 2 #563
+plot_TISS = True #toggle whether the interstellar scintillation timescale is plotted
+plot_knorm_all = False #toggle whether the normalized harmonic coefficients are plotted
+plot_knorm_VIS = False
 lt_s = u.Unit('lt_s', u.lightyear / u.yr * u.s)
+
+#---------------------------------------------------------------------------------------
 
 def Q_coeff(R,Psi_AR):
 	"""This function calculates the quadratic coefficients which
@@ -98,38 +119,39 @@ def RotateVector(v,angle):
 	return [new_v[0].value, new_v[1].value]*u.km/u.s
 
 
-def SystemVel(t_start,t_end,s,Oangle,psr):
+def SystemVel(t_start,t_end,s,Oangle,psr,VIS):
 	"""This function calculates the system velocity in the pulsar frame
 	as defined in equation 6 of Rickett et al. 2014.
 	Parameters:
-
+		t_start: initial time of observation, integer (for now)
+		t_end: last time of observation, integer (for now)
+		s : the fractional distance from the pulsar to the scintillation screen, float
+		Oangle: the angle needed to rotate onto x-y plane in radians, float
+		psr: a SkyCoordinate object representation of the pulsar
 	Returns:
 		VC: np array with two floats, representing x and y tranverse system velocity
 	"""	
 	times = Time(np.array(range(t_start,t_end)), format = 'mjd')
-	print('Times: ', times)
 	
 	#Calculate Earth velocity
 	VE = []
 	for t in times:
 		VE.append(RotateVector(EarthVelocity(t,'gbt',psr,0*u.deg)[1:3],Oangle))
 	VE = np.array(VE)
-	print(VE)
 
 	#Calculate pulsar velocity
 	VP = np.array([-17.8,11.6])*u.km/u.s #Just use values from paper for now
+	VP = RotateVector(VP,Oangle)#rotate pulsar velocity by Oangle
+
 	#Otherwise
 	#VP = PulsarBCVelocity(psr)[1:3] 
-
-	#rotate pulsar velocity by Oangle
-	VP = RotateVector(VP,Oangle)
 
 	VC = []
 	for v in VE:
 		VC.append(np.add(np.add(VP,v*u.km/u.s*s/(1-s)),-VIS/(1-s)))
 	return np.array(VC)*u.km/u.s
 
-
+#TODO: Maybe make this so it works for VC at multiple times
 def K_coeffs(V0,VC,Qabc,i,omega,ecc,sp):
 	"""This function calculates the orbital harmonic coefficients for the scintillation
 	timescale as defined in equation 10 of Rickett et al. 2014.
@@ -165,7 +187,10 @@ def K_coeffs(V0,VC,Qabc,i,omega,ecc,sp):
 
 def TISS(K,phi):
 	"""This function returns the interstellar scintillation timescale
-	as defined in equation 9 of Rickett et al. 2014
+	as defined in equation 9 of Rickett et al. 2014. Note that measured timescale
+	values for MJD 52997,53211,53311,53467,53560 are stored in .tiss5t files.
+	This function will only return the timescale as a function of phase for one set
+	of orbital harmonic coefficients (i.e. one observation day).
 	Parameters:
 		K: array of orbital harmonic coefficients (K0,KS,KC,KS2,KC2),float
 		phi: orbital phase from the line of nodes in radians, float
@@ -175,6 +200,7 @@ def TISS(K,phi):
 	in_T = (K[0].value+K[1].value*np.sin(phi) + K[2].value*np.cos(phi) +K[3].value*np.sin(2*phi) + K[4].value*np.cos(2*phi))
 	return np.sqrt(1/in_T)
 
+#Might be more useful to just output the normalized coefficients
 def uw_fit(VC,m,bm,V0,Qabc,i):
 	"""This function calculates the values of ux, uy, and w from equation 13 of Rickett et al 2014.
 	These variables combine to give normalized harmonic coefficients ks and k0.
@@ -195,145 +221,225 @@ def uw_fit(VC,m,bm,V0,Qabc,i):
 	return [ux,uy,w] 	
 
 
-#-------------------------------------------------
-#Fitted values from Table 3 of Rickett et al 2014
-#-------------------------------------------------
-i = 90.0*u.deg
-s = 0.71
-Oangle = 69*u.deg
-R = 0.76
-PsiAR = 72*u.deg
-VIS = np.array([-12,50])*u.km/u.s
-s0 = 8.4e6*u.m
-#-------------------------------------------------
-# Other constant values
-#-------------------------------------------------
-par = "J0737-3039A.par" #parameter file from ATNF
-t_start = 52997#52997
-t_end = 53000#53560
-t_nsteps = 3#563
-
 #----------------------------------------
 # Set up binary pulsar parameters	#
 #----------------------------------------
 
-psr_m = get_model(par)#Read in known values for par file (from ATNF)
+if (plot_TISS or plot_knorm_all or plot_knorm_VIS):
+	psr_m = get_model(par)#Read in known values for par file (from ATNF)
+
+	SMA = (psr_m.A1.quantity/psr_m.SINI.quantity) #convert projected semi major axis to actual value
+
+	psr = SkyCoord(ra=str(psr_m.RAJ.quantity), dec=str(psr_m.DECJ.quantity), pm_ra_cosdec=psr_m.PMRA.quantity, pm_dec=psr_m.PMDEC.quantity, distance=1150*u.pc)
+
+	t = toa.make_fake_toas(t_start,t_end,t_nsteps,psr_m,freq=820,obs="GBT")
+
+	psr_m.delay(t) #NOTE: You can only get binary model values IFF you call psr_m.delay(t) first!!!
+	bm = psr_m.binary_instance
+	VC = SystemVel(t_start,t_end,s,Oangle,psr,VIS)
+
+if (plot_TISS):
+
+	ax = plt.subplot(111)
+	plt.grid(linestyle='dotted')
+	plt.xlabel('Orbital Phase (deg)')
+	plt.ylabel('ISS Timescale (sec)')
+	ax.xaxis.set_major_locator(MultipleLocator(90))
+	ax.yaxis.set_major_locator(MultipleLocator(50))
+	#plt.ylim(0,250)
+	plt.xlim(0,360)
+
+	phi = np.linspace(0,360,360)
+	phi = np.radians(phi)
+	#phi = (bm.nu() + bm.omega())%(2*math.pi)
+
+	s0 = 6.6e6*u.m
+
+	#Calculate K coefficients
+	Ks0 = K_coeffs(OrbitMeanVel(psr_m.PB.quantity,SMA,psr_m.ECC.quantity),VC[0],Q_coeff(R,PsiAR),i,psr_m.OM.quantity,psr_m.ECC.quantity,s0/(1-s))
+	print('K Coefficients for i = 90', Ks0)
+
+	TS_plot = []
+
+	for angle in phi:
+		TS_plot.append(TISS(Ks0,angle))
+
+	ax.plot(np.degrees(phi),TS_plot, label='i=90.0$^\circ$')
+
+	#Values from Column 2
+	i = 91.3*u.deg
+	s = 0.70
+	Oangle = 111*u.deg
+	R = 0.96
+	PsiAR = 118*u.deg
+	VIS = np.array([-79,100])*u.km/u.s
+	s0 = 10.1e6*u.m
+
+	VC = SystemVel(t_start,t_end,s,Oangle,psr,VIS)
+
+	Ks0 = K_coeffs(OrbitMeanVel(psr_m.PB.quantity,SMA,psr_m.ECC.quantity),VC[0],Q_coeff(R,PsiAR),i,psr_m.OM.quantity,psr_m.ECC.quantity,s0/(1-s))
+
+	print('K Coefficients for i = 91.3', Ks0)
+
+	TS_plot = []
+
+	for angle in phi:
+		TS_plot.append(TISS(Ks0,angle))
+
+	ax.plot(np.degrees(phi),TS_plot, label='i=91.3$^\circ$')
 
 
-SMA = (psr_m.A1.quantity/psr_m.SINI.quantity) #convert projected semi major axis to actual value
+	#Values from Column 3
+	i = 88.7*u.deg
+	s = 0.70
+	Oangle = 61*u.deg
+	R = 0.71
+	PsiAR = 61*u.deg
+	VIS = np.array([-9,42])*u.km/u.s
+	s0 = 6.1e6*u.m
 
-psr = SkyCoord(ra=str(psr_m.RAJ.quantity), dec=str(psr_m.DECJ.quantity), pm_ra_cosdec=psr_m.PMRA.quantity, pm_dec=psr_m.PMDEC.quantity, distance=1150*u.pc)
+	VC = SystemVel(t_start,t_end,s,Oangle,psr,VIS)
 
-VC = SystemVel(t_start,t_end,s,Oangle,psr)
+	Ks0 = K_coeffs(OrbitMeanVel(psr_m.PB.quantity,SMA,psr_m.ECC.quantity),VC[0],Q_coeff(R,PsiAR),i,psr_m.OM.quantity,psr_m.ECC.quantity,s0/(1-s))
 
-"""
-#VC[215] gives MJD 53211
-#Calculate K coefficients
-Ks0 = K_coeffs(OrbitMeanVel(psr_m.PB.quantity,SMA,psr_m.ECC.quantity),VC[0],Q_coeff(R,PsiAR),i,psr_m.OM.quantity,psr_m.ECC.quantity,s0/(1-s))
-print('K Coefficients with Paper Pulsar PM', Ks0)
-"""
-"""
-#--------------------------------------
-# Set up PINT binary model	      #
-#--------------------------------------
+	print('K Coefficients for i = 88.7', Ks0)
 
-t = toa.make_fake_toas(t_start,t_end,t_nsteps,psr_m,freq=820,obs="GBT")
+	TS_plot = []
 
-psr_m.delay(t) #NOTE: You can only get binary model values IFF you call psr_m.delay(t) first!!!
-bm = psr_m.binary_instance
+	for angle in phi:
+		TS_plot.append(TISS(Ks0,angle))
 
-#This is where I will use the functions to calculate the things
-Qabc = Q_coeff(R,PsiAR)
-"""
+	ax.plot(np.degrees(phi),TS_plot, label='i=88.7$^\circ$')
 
+	tiss_data = Table.read('Rickett/P0737_obs/52997/52997.tiss5t',format='ascii.no_header',data_start=11,names=('phi','T_iss','T_iss_error'))
 
+	
+	plt.errorbar(tiss_data['phi'],tiss_data['T_iss'],yerr=tiss_data['T_iss_error'],fmt = 'o',label='Data')
+	ax.legend()
+	plt.title('MJD 52997')
+	plt.show()
 
+if (plot_knorm_all):
+	uw = uw_fit(VC,psr_m,bm,OrbitMeanVel(psr_m.PB.quantity,SMA,psr_m.ECC.quantity),Q_coeff(R,PsiAR),i)
 
-"""
-VP = PulsarBCVelocity(psr)[1:3]
-VP = RotateVector(VP,Oangle)
-print('Pulsar Velocity:',VP)
+	times = np.array(range(t_start-53000,t_end-53000))
 
-VC = SystemVel(VP,VE,VIS,s)
-
-Ks1 = K_coeffs(OrbitMeanVel(psr_m.PB.quantity,SMA,psr_m.ECC.quantity),VC,Q_coeff(R,PsiAR),i,psr_m.OM.quantity,psr_m.ECC.quantity,s0/(1-s))
-print('K Coefficients with ATNF Pulsar PM', Ks1)
-"""
-
-#TODO: Make this into some sort of plotting function
-"""
-#This is currently set up to plot the fitted harmonic coefficients to the timescale on MJD53211
-#It also includes calculations of what the harmonic coefficients would be from the fitted parameters
-
-tiss_data = Table.read('Rickett/P0737_obs/53211/53211.tiss5t',format='ascii.no_header',data_start=11,names=('phi','T_iss','T_iss_error'))
-
-phi = np.linspace(0,360,360)
-phi = np.radians(phi)
-
-#phi0 = (bm.nu() + bm.omega())%(2*math.pi)
-
-TS_plot = []
-#R_plot = []
-#R3_plot = []
-
-for angle in phi:
-	TS_plot.append(TISS(Ks0,angle))
-	#R_plot.append(TISS(Ks1,angle))
-	#R_plot.append(TISS([3.79e-4*u.s*u.s,0.70e-4*u.s*u.s,-0.02e-4*u.s*u.s,-0.06e-4*u.s*u.s,-3.51e-4*u.s*u.s],angle))
-	#R3_plot.append(TISS([3.79e-4*u.s*u.s,-0.06e-4*u.s*u.s,0.0*u.s*u.s,0.0*u.s*u.s,-3.51e-4*u.s*u.s],angle))
-
-#for angle in phi0:
-#	TS_plot.append(TISS([3.25e-4*u.s*u.s,-1.57e-4*u.s*u.s,-0.05e-4*u.s*u.s,0.01e-4*u.s*u.s,-2.57e-4*u.s*u.s],angle))
+	plt.plot(times,4*uw[0]+2*uw[2]*uw[1],"r-", label='i=90$^\circ$')
+	plt.plot(times,-1-2*uw[0]*uw[0]-2*uw[2]*uw[0]*uw[1]-2*uw[1]*uw[1],"r--")
 
 
+	#Values from Column 2
+	i = 91.3*u.deg
+	s = 0.70
+	Oangle = 111*u.deg
+	R = 0.96
+	PsiAR = 118*u.deg
+	VIS = np.array([-79,100])*u.km/u.s
 
-ax = plt.subplot(111)
-plt.grid(linestyle='dotted')
-plt.xlabel('Orbital Phase (deg)')
-plt.ylabel('ISS Timescale (sec)')
-ax.xaxis.set_major_locator(MultipleLocator(90))
-ax.yaxis.set_major_locator(MultipleLocator(50))
-plt.ylim(0,250)
-#plt.xlim(0,360)
-ax.plot(np.degrees(phi),TS_plot, label='Fitted Parameters (Table 2)')
-#ax.plot(np.degrees(phi),R_plot, label='Fitted 5 Harmonic Coefficients')
-#ax.plot(np.degrees(phi),R3_plot, label='Fitted 3 Harmonic Coefficients')
-plt.errorbar(tiss_data['phi'],tiss_data['T_iss'],yerr=tiss_data['T_iss_error'],fmt = 'o',label='Data')
-ax.legend()
-plt.title('MJD 53211')
-plt.show()
+	VC = SystemVel(t_start,t_end,s,Oangle,psr,VIS)
 
-"""
+	uw = uw_fit(VC,psr_m,bm,OrbitMeanVel(psr_m.PB.quantity,SMA,psr_m.ECC.quantity),Q_coeff(R,PsiAR),i)
 
-"""
-#TODO: Make this into some sort of plotting function
-u = uw_fit(VC,psr_m,bm,OrbitMeanVel(psr_m.PB.quantity,SMA,psr_m.ECC.quantity),Qabc,i)
+	plt.plot(times,4*uw[0]+2*uw[2]*uw[1],"b-", label='i=91.3$^\circ$')
+	plt.plot(times,-1-2*uw[0]*uw[0]-2*uw[2]*uw[0]*uw[1]-2*uw[1]*uw[1],"b--")
 
-times = np.array(range(t_start-53000,t_end-53000))
+	#Values from Column 3
+	i = 88.7*u.deg
+	s = 0.70
+	Oangle = 61*u.deg
+	R = 0.71
+	PsiAR = 61*u.deg
+	VIS = np.array([-9,42])*u.km/u.s
 
-plt.plot(times,4*u[0]+2*u[2]*u[1],label='ks fit')
-plt.plot(times,-1-2*u[0]*u[0]-2*u[2]*u[0]*u[1]-2*u[1]*u[1],label='k0 fit')
+	VC = SystemVel(t_start,t_end,s,Oangle,psr,VIS)
+
+	uw = uw_fit(VC,psr_m,bm,OrbitMeanVel(psr_m.PB.quantity,SMA,psr_m.ECC.quantity),Q_coeff(R,PsiAR),i)
+
+	plt.plot(times,4*uw[0]+2*uw[2]*uw[1],"g-", label='i=88.7$^\circ$')
+	plt.plot(times,-1-2*uw[0]*uw[0]-2*uw[2]*uw[0]*uw[1]-2*uw[1]*uw[1],"g--")
+	
+
+	#observation days from Table 1
+	obs_day = [-3,211,311,379,467,202,203,274,312,319,374,378,415,451,462,505,560]
+
+	#k_fit[0] is K0 (col. 1 of Table 1), k_fit[1] is Ks (col.2 of Table 1), k_fit[2] is Kc2 (col. 5 of Table 1)
+	k_fit = np.array([[3.46,3.79,4.76,6.19,3.25,0.96,0.89,0.92,1.35,1.41,0.91,0.94,0.74,0.84,0.74,0.54,0.29],[-2.63,0.70,-3.63,-6.74,-1.57,0.41,0.29,-0.40,-1.23,-1.39,-1.02,-1.05,-0.80,-0.71,-0.60,0.06,0.16],[-2.77,-3.51,-4.02,-4.40,-2.57,-1.07,-0.86,-0.84,-1.15,-1.13,-0.59,-0.62,-0.53,-0.67,-0.58,-0.49,-0.26]])
+
+	#k_err[0] is K0 (col. 1 of Table 1), k_err[1] is Ks (col.2 of Table 1), k_err[2] is Kc2 (col. 5 of Table 1)
+	k_err = np.array([[0.06,0.10,0.13,0.14,0.08,0.09,0.05,0.06,0.06,0.05,0.05,0.03,0.04,0.03,0.02,0.03,0.01],[0.08,0.11,0.16,0.19,0.10,0.15,0.07,0.08,0.07,0.07,0.09,0.05,0.06,0.05,0.03,0.04,0.02],[0.06,0.10,0.12,0.12,0.08,0.12,0.05,0.06,0.06,0.05,0.06,0.03,0.04,0.04,0.02,0.04,0.01]])
+
+	k0 = k_fit[0]/k_fit[2]
+	k0_error = k0*(k_err[0]/k_fit[0] + k_err[2]/k_fit[2])
+
+	ks = k_fit[1]/k_fit[2]
+	ks_error = ks*(k_err[1]/k_fit[1] + k_err[2]/k_fit[2])
+
+	plt.xlabel('MJD-53000')
+	plt.ylabel('Coefficient Value')
+	plt.errorbar(obs_day,k0,yerr=k0_error, fmt='kx', label='k0')
+	plt.errorbar(obs_day,ks,yerr=ks_error, fmt='ks',label='ks')
+	plt.legend()
+	plt.show()
+
+if (plot_knorm_VIS):
+	#Values from Column 2
+	i = 91.3*u.deg
+	s = 0.70
+	Oangle = 111*u.deg
+	R = 0.96
+	PsiAR = 118*u.deg
+	VIS = np.array([-79,100])*u.km/u.s
+
+	VC = SystemVel(t_start,t_end,s,Oangle,psr,VIS)
+
+	uw = uw_fit(VC,psr_m,bm,OrbitMeanVel(psr_m.PB.quantity,SMA,psr_m.ECC.quantity),Q_coeff(R,PsiAR),i)
+
+	times = np.array(range(t_start-53000,t_end-53000))
+
+	plt.plot(times,4*uw[0]+2*uw[2]*uw[1],"r-", label='VIS,y = 100 km/s')
+	plt.plot(times,-1-2*uw[0]*uw[0]-2*uw[2]*uw[0]*uw[1]-2*uw[1]*uw[1],"r--")
 
 
-#observation days from Table 1
-obs_day = [-3,211,311,379,467,202,203,274,312,319,374,378,415,451,462,505,560]
+	#Values from Column 2
+	VIS = np.array([-79,200])*u.km/u.s
+	
+	VC = SystemVel(t_start,t_end,s,Oangle,psr,VIS)
+	uw = uw_fit(VC,psr_m,bm,OrbitMeanVel(psr_m.PB.quantity,SMA,psr_m.ECC.quantity),Q_coeff(R,PsiAR),i)
 
-#k_fit[0] is K0 (col. 1 of Table 1), k_fit[1] is Ks (col.2 of Table 1), k_fit[2] is Kc2 (col. 5 of Table 1)
-k_fit = np.array([[3.46,3.79,4.76,6.19,3.25,0.96,0.89,0.92,1.35,1.41,0.91,0.94,0.74,0.84,0.74,0.54,0.29],[-2.63,0.70,-3.63,-6.74,-1.57,0.41,0.29,-0.40,-1.23,-1.39,-1.02,-1.05,-0.80,-0.71,-0.60,0.06,0.16],[-2.77,-3.51,-4.02,-4.40,-2.57,-1.07,-0.86,-0.84,-1.15,-1.13,-0.59,-0.62,-0.53,-0.67,-0.58,-0.49,-0.26]])
+	plt.plot(times,4*uw[0]+2*uw[2]*uw[1],"b-", label='VIS,y = 200 km/s')
+	plt.plot(times,-1-2*uw[0]*uw[0]-2*uw[2]*uw[0]*uw[1]-2*uw[1]*uw[1],"b--")
 
-#k_err[0] is K0 (col. 1 of Table 1), k_err[1] is Ks (col.2 of Table 1), k_err[2] is Kc2 (col. 5 of Table 1)
-k_err = np.array([[0.06,0.10,0.13,0.14,0.08,0.09,0.05,0.06,0.06,0.05,0.05,0.03,0.04,0.03,0.02,0.03,0.01],[0.08,0.11,0.16,0.19,0.10,0.15,0.07,0.08,0.07,0.07,0.09,0.05,0.06,0.05,0.03,0.04,0.02],[0.06,0.10,0.12,0.12,0.08,0.12,0.05,0.06,0.06,0.05,0.06,0.03,0.04,0.04,0.02,0.04,0.01]])
+	#Values from Column 3
+	VIS = np.array([-79,300])*u.km/u.s
 
-k0 = k_fit[0]/k_fit[2]
-k0_error = k0*(k_err[0]/k_fit[0] + k_err[2]/k_fit[2])
+	VC = SystemVel(t_start,t_end,s,Oangle,psr,VIS)
 
-ks = k_fit[1]/k_fit[2]
-ks_error = ks*(k_err[1]/k_fit[1] + k_err[2]/k_fit[2])
+	uw = uw_fit(VC,psr_m,bm,OrbitMeanVel(psr_m.PB.quantity,SMA,psr_m.ECC.quantity),Q_coeff(R,PsiAR),i)
+
+	plt.plot(times,4*uw[0]+2*uw[2]*uw[1],"g-", label='VIS,y = 300 km/s')
+	plt.plot(times,-1-2*uw[0]*uw[0]-2*uw[2]*uw[0]*uw[1]-2*uw[1]*uw[1],"g--")
+	
+
+	#observation days from Table 1
+	obs_day = [-3,211,311,379,467,202,203,274,312,319,374,378,415,451,462,505,560]
+
+	#k_fit[0] is K0 (col. 1 of Table 1), k_fit[1] is Ks (col.2 of Table 1), k_fit[2] is Kc2 (col. 5 of Table 1)
+	k_fit = np.array([[3.46,3.79,4.76,6.19,3.25,0.96,0.89,0.92,1.35,1.41,0.91,0.94,0.74,0.84,0.74,0.54,0.29],[-2.63,0.70,-3.63,-6.74,-1.57,0.41,0.29,-0.40,-1.23,-1.39,-1.02,-1.05,-0.80,-0.71,-0.60,0.06,0.16],[-2.77,-3.51,-4.02,-4.40,-2.57,-1.07,-0.86,-0.84,-1.15,-1.13,-0.59,-0.62,-0.53,-0.67,-0.58,-0.49,-0.26]])
+
+	#k_err[0] is K0 (col. 1 of Table 1), k_err[1] is Ks (col.2 of Table 1), k_err[2] is Kc2 (col. 5 of Table 1)
+	k_err = np.array([[0.06,0.10,0.13,0.14,0.08,0.09,0.05,0.06,0.06,0.05,0.05,0.03,0.04,0.03,0.02,0.03,0.01],[0.08,0.11,0.16,0.19,0.10,0.15,0.07,0.08,0.07,0.07,0.09,0.05,0.06,0.05,0.03,0.04,0.02],[0.06,0.10,0.12,0.12,0.08,0.12,0.05,0.06,0.06,0.05,0.06,0.03,0.04,0.04,0.02,0.04,0.01]])
+
+	k0 = k_fit[0]/k_fit[2]
+	k0_error = k0*(k_err[0]/k_fit[0] + k_err[2]/k_fit[2])
+
+	ks = k_fit[1]/k_fit[2]
+	ks_error = ks*(k_err[1]/k_fit[1] + k_err[2]/k_fit[2])
+
+	plt.xlabel('MJD-53000')
+	plt.ylabel('Coefficient Value')
+	plt.errorbar(obs_day,k0,yerr=k0_error, fmt='kx', label='k0')
+	plt.errorbar(obs_day,ks,yerr=ks_error, fmt='ks',label='ks')
+	plt.legend()
+	plt.show()
 
 
-plt.errorbar(obs_day,k0,yerr=k0_error, fmt='o', label='k0')
-plt.errorbar(obs_day,ks,yerr=ks_error, fmt='o',label='ks')
-plt.legend()
-plt.show()
-
-"""
