@@ -34,7 +34,7 @@ t_end = 53561 #53561
 t_nsteps = 564 #564
 plot_TISS = False #toggle whether the interstellar scintillation timescale is plotted
 plot_knorm_all = False #toggle whether the normalized harmonic coefficients are plotted
-plot_knorm_VIS = False #toggle normalized harmonic coefficients being plotted for different velocities
+plot_knorm_VIS = True #toggle normalized harmonic coefficients being plotted for different velocities
 lt_s = u.Unit('lt_s', u.lightyear / u.yr * u.s)
 
 #---------------------------------------------------------------------------------------
@@ -204,10 +204,10 @@ def TISS(K,phi):
 	in_T = (K[0].value+K[1].value*np.sin(phi) + K[2].value*np.cos(phi) +K[3].value*np.sin(2*phi) + K[4].value*np.cos(2*phi))
 	return np.sqrt(1/in_T)
 
-#Might be more useful to just output the normalized coefficients
-def uw_fit(VC,m,bm,V0,Qabc,i):
+def k_norm(VC,m,bm,V0,Qabc,i):
 	"""This function calculates the values of ux, uy, and w from equation 13 of Rickett et al 2014.
-	These variables combine to give normalized harmonic coefficients ks and k0.
+	These variables combine to give normalized harmonic coefficients ks and k0, which are output by this
+	function.
 	Parameters:
 		VC: related to scintillation velocity (eq.6), array of two floats [VCX,VCY]
 		m: pint model of pulsar (determined from par file)
@@ -216,13 +216,13 @@ def uw_fit(VC,m,bm,V0,Qabc,i):
 		Qabc: quadratic coefficients (eq. 4), array of three floats [a,b,c]
 		i: inclination angle in radians, float
 	Returns:
-		[ux,uy,w]: an array of unitless variables (eq. 6) related to normalized 
-		harmonic coefficients, floats
+		[ks,k0]: an array of unitless normalized harmonic coefficients, floats
+		from eq. 14 of Rickett
 	"""
 	ux = VC[:,0]/V0 -np.array(m.ECC.quantity*np.sin(bm.omega()))
 	uy = math.sqrt(Qabc[1]/Qabc[0])*(VC[:,1]/V0 + m.ECC.quantity*np.cos(i)*np.cos(bm.omega()))
 	w = Qabc[2]/math.sqrt(Qabc[0]*Qabc[1])
-	return [ux,uy,w] 	
+	return [4*ux+2*w*uy,-1-2*ux*ux - 2*w*ux*uy - 2*uy*uy] 	
 
 
 #----------------------------------------
@@ -326,13 +326,14 @@ if (plot_TISS):
 	plt.show()
 
 if (plot_knorm_all):
-	VC = SystemVel(t_start,t_end,t_nsteps,s,Oangle,psr,VIS)
-	uw = uw_fit(VC,psr_m,bm,OrbitMeanVel(psr_m.PB.quantity,SMA,psr_m.ECC.quantity),Q_coeff(R,PsiAR),i)
 
 	times = np.array(range(t_start-53000,t_end-53000))
 
-	plt.plot(times,4*uw[0]+2*uw[2]*uw[1],"r-", label='i=90$^\circ$')
-	plt.plot(times,-1-2*uw[0]*uw[0]-2*uw[2]*uw[0]*uw[1]-2*uw[1]*uw[1],"r--")
+	VC = SystemVel(t_start,t_end,t_nsteps,s,Oangle,psr,VIS)
+	[ks,k0] = k_norm(VC,psr_m,bm,OrbitMeanVel(psr_m.PB.quantity,SMA,psr_m.ECC.quantity),Q_coeff(R,PsiAR),i)
+
+	plt.plot(times,ks,"r-", label='i=90$^\circ$')
+	plt.plot(times,k0,"r--")
 
 
 	#Values from Column 2
@@ -343,12 +344,11 @@ if (plot_knorm_all):
 	PsiAR = 118*u.deg
 	VIS = np.array([-79,100])*u.km/u.s
 
-	VC = SystemVel(t_start,t_end,s,Oangle,psr,VIS)
+	VC = SystemVel(t_start,t_end,t_nsteps,s,Oangle,psr,VIS)
+	[ks,k0] = k_norm(VC,psr_m,bm,OrbitMeanVel(psr_m.PB.quantity,SMA,psr_m.ECC.quantity),Q_coeff(R,PsiAR),i)
 
-	uw = uw_fit(VC,psr_m,bm,OrbitMeanVel(psr_m.PB.quantity,SMA,psr_m.ECC.quantity),Q_coeff(R,PsiAR),i)
-
-	plt.plot(times,4*uw[0]+2*uw[2]*uw[1],"b-", label='i=91.3$^\circ$')
-	plt.plot(times,-1-2*uw[0]*uw[0]-2*uw[2]*uw[0]*uw[1]-2*uw[1]*uw[1],"b--")
+	plt.plot(times,ks,"r-", label='i=91.3$^\circ$')
+	plt.plot(times,k0,"r--")
 
 	#Values from Column 3
 	i = 88.7*u.deg
@@ -359,11 +359,11 @@ if (plot_knorm_all):
 	VIS = np.array([-9,42])*u.km/u.s
 
 	VC = SystemVel(t_start,t_end,t_nsteps,s,Oangle,psr,VIS)
+	[ks,k0] = k_norm(VC,psr_m,bm,OrbitMeanVel(psr_m.PB.quantity,SMA,psr_m.ECC.quantity),Q_coeff(R,PsiAR),i)
 
-	uw = uw_fit(VC,psr_m,bm,OrbitMeanVel(psr_m.PB.quantity,SMA,psr_m.ECC.quantity),Q_coeff(R,PsiAR),i)
+	plt.plot(times,ks,"r-", label='i=88.7$^\circ$')
+	plt.plot(times,k0,"r--")
 
-	plt.plot(times,4*uw[0]+2*uw[2]*uw[1],"g-", label='i=88.7$^\circ$')
-	plt.plot(times,-1-2*uw[0]*uw[0]-2*uw[2]*uw[0]*uw[1]-2*uw[1]*uw[1],"g--")
 	
 
 	#observation days from Table 1
@@ -397,39 +397,40 @@ if (plot_knorm_VIS):
 	PsiAR = 118*u.deg
 	VIS0 = np.array([-79,100])*u.km/u.s
 
+	times = np.array(range(t_start-53000,t_end-53000))
+
 	VC = SystemVel(t_start,t_end,t_nsteps,s,Oangle,psr,VIS0)
 
 
-	uw = uw_fit(VC,psr_m,bm,OrbitMeanVel(psr_m.PB.quantity,SMA,psr_m.ECC.quantity),Q_coeff(R,PsiAR),i)
+	[ks,k0] = k_norm(VC,psr_m,bm,OrbitMeanVel(psr_m.PB.quantity,SMA,psr_m.ECC.quantity),Q_coeff(R,PsiAR),i)
 
-	times = np.array(range(t_start-53000,t_end-53000))
 
-	plt.plot(times,4*uw[0]+2*uw[2]*uw[1],"r-", label='VIS,y = 100 km/s')
-	plt.plot(times,-1-2*uw[0]*uw[0]-2*uw[2]*uw[0]*uw[1]-2*uw[1]*uw[1],"r--")
+	plt.plot(times,ks,"r-", label='VIS,y = 100 km/s')
+	plt.plot(times,k0,"r--")
 
 	VIS = RotateVector(VIS0,-PsiAR) #Rotate into parallel and perpendicular axes
 	VIS[1] -= 50*u.km/u.s #Add to perpendicular axis
 	VIS = -RotateVector(VIS,PsiAR) #Rotate back into x and y
-	print('VIS changed perp: ', VIS)
+	#print('VIS changed perp: ', VIS)
 	
 	VC = SystemVel(t_start,t_end,t_nsteps,s,Oangle,psr,VIS)
-	uw = uw_fit(VC,psr_m,bm,OrbitMeanVel(psr_m.PB.quantity,SMA,psr_m.ECC.quantity),Q_coeff(R,PsiAR),i)
+	[ks,k0] = k_norm(VC,psr_m,bm,OrbitMeanVel(psr_m.PB.quantity,SMA,psr_m.ECC.quantity),Q_coeff(R,PsiAR),i)
 
-	plt.plot(times,4*uw[0]+2*uw[2]*uw[1],"b-", label='VIS,perp += 50 km/s')
-	plt.plot(times,-1-2*uw[0]*uw[0]-2*uw[2]*uw[0]*uw[1]-2*uw[1]*uw[1],"b--")
+	plt.plot(times,ks,"b-", label='VIS,perp += 50 km/s')
+	plt.plot(times,k0,"b--")
 
 	VIS = RotateVector(VIS0,-PsiAR) #Rotate into parallel and perpendicular axes
 	VIS[0] += 50*u.km/u.s #Add to parallel axis
 	VIS = -RotateVector(VIS,PsiAR) #Rotate back into x and y
 
-	print('VIS changed parallel: ', VIS)
+	#print('VIS changed parallel: ', VIS)
 
 	VC = SystemVel(t_start,t_end,t_nsteps,s,Oangle,psr,VIS)
 
-	uw = uw_fit(VC,psr_m,bm,OrbitMeanVel(psr_m.PB.quantity,SMA,psr_m.ECC.quantity),Q_coeff(R,PsiAR),i)
+	[ks,k0] = k_norm(VC,psr_m,bm,OrbitMeanVel(psr_m.PB.quantity,SMA,psr_m.ECC.quantity),Q_coeff(R,PsiAR),i)
 
-	plt.plot(times,4*uw[0]+2*uw[2]*uw[1],"g-", label='VIS,par += 50 km/s')
-	plt.plot(times,-1-2*uw[0]*uw[0]-2*uw[2]*uw[0]*uw[1]-2*uw[1]*uw[1],"g--")
+	plt.plot(times,ks,"g-", label='VIS,par += 50 km/s')
+	plt.plot(times,k0,"g--")
 	
 
 	#observation days from Table 1
