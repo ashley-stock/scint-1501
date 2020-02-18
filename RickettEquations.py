@@ -9,10 +9,11 @@ from pint import toa
 from matplotlib.ticker import MultipleLocator
 import math
 from astropy.table import Table
+from astropy import constants as const
 
 
 """TODO:
--make more self-consistent with units?
+-Make functions so they have default values
 """
 
 #-------------------------------------------------------------------------------------
@@ -34,12 +35,12 @@ t_end = 53561 #53561
 t_nsteps = 564 #564
 plot_TISS = False #toggle whether the interstellar scintillation timescale is plotted
 plot_knorm_all = False #toggle whether the normalized harmonic coefficients are plotted
-plot_knorm_VIS = True #toggle normalized harmonic coefficients being plotted for different velocities
+plot_knorm_VIS = False #toggle normalized harmonic coefficients being plotted for different velocities
 lt_s = u.Unit('lt_s', u.lightyear / u.yr * u.s)
 
 #---------------------------------------------------------------------------------------
 
-def Q_coeff(R,Psi_Psi_AR):
+def Q_coeff(R=R,Psi_AR =PsiAR):
 	"""This function calculates the quadratic coefficients which
 	describe the ISS anisotropy as defined in equation 4 of Rickett et al. 2014
 	Parameters:
@@ -66,7 +67,7 @@ def OrbitMeanVel(PB,SMA,ECC):
 	"""
 	return (2*math.pi*SMA/(PB*np.sqrt(1-ECC*ECC))).to(u.km/u.s)
 
-def SpatialScale(s0,s):
+def SpatialScale(s0=s0,s=s):
 	"""This function calculates the unitless spatial scale in the pulsar frame.
 	Parameters:
 		s0: the mean diffractive scale (units of length), float
@@ -124,11 +125,13 @@ def SystemVel(t_start,t_end,t_nsteps,s,Oangle,psr,VIS):
 	"""This function calculates the system velocity in the pulsar frame
 	as defined in equation 6 of Rickett et al. 2014.
 	Parameters:
-		t_start: initial time of observation, integer (for now)
-		t_end: last time of observation, integer (for now)
+		t_start : initial time of observation, integer (for now)
+		t_end : last time of observation, integer (for now)
 		s : the fractional distance from the pulsar to the scintillation screen, float
 		Oangle: the angle needed to rotate onto x-y plane in radians, float
-		psr: a SkyCoordinate object representation of the pulsar
+		psr : a SkyCoordinate object representation of the pulsar
+		VIS : the best fit velocity of the interstellar scintillation screen,
+			np array with two floats for x and y velocity
 	Returns:
 		VC: np array with two floats, representing x and y tranverse system velocity
 	"""	
@@ -222,7 +225,49 @@ def k_norm(VC,m,bm,V0,Qabc,i):
 	ux = VC[:,0]/V0 -np.array(m.ECC.quantity*np.sin(bm.omega()))
 	uy = math.sqrt(Qabc[1]/Qabc[0])*(VC[:,1]/V0 + m.ECC.quantity*np.cos(i)*np.cos(bm.omega()))
 	w = Qabc[2]/math.sqrt(Qabc[0]*Qabc[1])
-	return [4*ux+2*w*uy,-1-2*ux*ux - 2*w*ux*uy - 2*uy*uy] 	
+	return [4*ux+2*w*uy,-1-2*ux*ux - 2*w*ux*uy - 2*uy*uy]
+
+def eta(t_start,t_end,i,s,Oangle,PsiAR,VIS,par,dpsr,freq,phase):
+	"""
+	This function calculates the expected curvature of scintillation arcs.
+	Parameters:
+		t_start:  The epoch that the curvature is being calculated for,
+			and integer in MJD
+		i : the inclination angle of the orbit, float
+		s : the fractional distance from the pulsar to the scintillation screen, float
+		Oangle : the angle needed to rotate onto x-y plane in radians, float
+		PsiAR : the fitted angle of direction of major axis of scintillation screen, float
+		VIS : the best fit velocity of the interstellar scintillation screen,
+			np array with two floats for x and y velocity
+		par : parameter filename, string
+		dpsr : distance to the pulsar, float
+		freq : frequency of interest, float
+		phase : the orbital phase of the pulsar from the line of nodes (i.e. true anomaly + longitude 				of periastron), a numpy array of floats
+	Returns:
+		eta : the expected curvature of the scintillation arcs as a function of orbital phase 
+	"""
+	psr_m = get_model(par) # create model of pulsar
+
+	psr = SkyCoord(ra=str(psr_m.RAJ.quantity), dec=str(psr_m.DECJ.quantity), pm_ra_cosdec=psr_m.PMRA.quantity, pm_dec=psr_m.PMDEC.quantity, distance=dpsr)
+
+	#Calculate values from binary model for one orbit
+	#t = toa.make_fake_toas(t_start,t_start+psr_m.PB.value,phase.shape[0],psr_m,freq=freq,obs="GBT")
+	t = toa.make_fake_toas(t_start,t_end,phase.shape[0],psr_m,freq=freq,obs="GBT")
+	psr_m.delay(t)
+	bm = psr_m.binary_instance
+	#phase = bm.nu()+bm.omega()
+	#print('True Anomaly: ', bm.nu())
+	#print('Longitude of Periastron: ', bm.omega())
+
+	#Calculate scintillation velocity
+	VC = SystemVel(t_start,t_start+1,1,s,Oangle,psr,VIS)
+	V0 = OrbitMeanVel(psr_m.PB.quantity,psr_m.A1.quantity/psr_m.SINI.quantity,psr_m.ECC.quantity)
+	VAx = VC[0][0] - V0*psr_m.ECC.quantity*np.sin(bm.omega()) - V0*np.sin(phase)
+	VAy = VC[0][1] + np.cos(i)*(V0*psr_m.ECC.quantity*np.cos(bm.omega()) + V0*np.cos(phase))
+	VA = RotateVector([VAx,VAy],-PsiAR)
+
+	eta = const.c*dpsr*s/(2*freq*freq*(1-s)*VA[0]*VA[0]) 
+	return VA[0], eta	
 
 
 #----------------------------------------
