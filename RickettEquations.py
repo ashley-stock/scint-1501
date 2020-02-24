@@ -2,6 +2,7 @@ import numpy as np
 import math
 from astropy import units as u
 from astropy.coordinates import EarthLocation, SkyOffsetFrame, SkyCoord
+from pint.models import get_model
 from astropy.time import Time
 from astropy import constants as const
 
@@ -112,7 +113,7 @@ def RotateVector(v,angle):
 	return [new_v[0].value, new_v[1].value]*u.km/u.s
 
 
-def SystemVel(t_start,t_end,t_nsteps,s,Oangle,psr,VIS):
+def SystemVel(t_start,t_end,t_nsteps,fitval,psr):
 	"""This function calculates the system velocity in the pulsar frame
 	as defined in equation 6 of Rickett et al. 2014.
 	Parameters:
@@ -125,19 +126,19 @@ def SystemVel(t_start,t_end,t_nsteps,s,Oangle,psr,VIS):
 			np array with two floats for x and y velocity
 	Returns:
 		VC: np array with two floats, representing x and y tranverse system velocity
-	"""	
+	"""
 	times = Time(np.array(range(t_start,t_end)), format = 'mjd')
 	
 	#Calculate Earth velocity
 	VE = np.ones((t_nsteps,2))
 	i=0
 	for t in times:
-		VE[i]=RotateVector(EarthVelocity(t,'gbt',psr,0*u.deg)[1:3],Oangle)
+		VE[i]=RotateVector(EarthVelocity(t,'gbt',psr,0*u.deg)[1:3],fitval['Oangle'])
 		i +=1
 
 	#Calculate pulsar velocity
 	VP = np.array([-17.8,11.6])*u.km/u.s #Just use values from paper for now
-	VP = RotateVector(VP,Oangle)#rotate pulsar velocity by Oangle
+	VP = RotateVector(VP,fitval['Oangle'])#rotate pulsar velocity by Oangle
 
 	#Otherwise
 	#VP = PulsarBCVelocity(psr)[1:3] 
@@ -145,7 +146,7 @@ def SystemVel(t_start,t_end,t_nsteps,s,Oangle,psr,VIS):
 	VC = np.ones((t_nsteps,2))
 	i = 0
 	for v in VE:
-		VC[i] = np.add(np.add(VP,v*u.km/u.s*s/(1-s)),-VIS/(1-s))
+		VC[i] = np.add(np.add(VP,v*u.km/u.s*s/(1-s)),-fitval['VIS']/(1-fitval['s']))
 		i +=1
 	return np.array(VC)*u.km/u.s
 
@@ -216,8 +217,4 @@ def k_norm(VC,m,bm,V0,Qabc,i):
 	uy = math.sqrt(Qabc[1]/Qabc[0])*(VC[:,1]/V0 + m.ECC.quantity*np.cos(i)*np.cos(bm.omega()))
 	w = Qabc[2]/math.sqrt(Qabc[0]*Qabc[1])
 	return [4*ux+2*w*uy,-1-2*ux*ux - 2*w*ux*uy - 2*uy*uy]
-
-	
-
-
 
