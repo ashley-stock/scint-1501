@@ -32,7 +32,7 @@ lt_s = u.Unit('lt_s', u.lightyear / u.yr * u.s)
 
 #---------------------------------------------------------------------------------------
 
-def Q_coeff(R=R,Psi_AR =PsiAR):
+def Q_coeff(R,Psi_AR):
 	"""This function calculates the quadratic coefficients which
 	describe the ISS anisotropy as defined in equation 4 of Rickett et al. 2014
 	Parameters:
@@ -150,7 +150,7 @@ def SystemVel(t_start,t_end,t_nsteps,fitval,psr):
 		i +=1
 	return np.array(VC)*u.km/u.s
 
-def K_coeffs(V0,VC,Qabc,i,omega,ecc,sp):
+def K_coeffs(t_start, fitval, psr, psr_m):
 	"""This function calculates the orbital harmonic coefficients for the scintillation
 	timescale as defined in equation 10 of Rickett et al. 2014.
 	Parameters:
@@ -164,6 +164,16 @@ def K_coeffs(V0,VC,Qabc,i,omega,ecc,sp):
 	Returns:
 		[K0,KS,KC,KS2,KC2]: an array of orbital harmonic coefficients, floats
 	"""
+
+	SMA = (psr_m.A1.quantity/psr_m.SINI.quantity) #convert projected semi major axis to actual value
+	V0 = OrbitMeanVel(psr_m.PB.quantity,SMA,psr_m.ECC.quantity)
+	VC = SystemVel(t_start,t_start+1,1,fitval,psr)[0]
+	Qabc = Q_coeff(fitval['R'],fitval['PsiAR'])
+	omega = psr_m.OM.quantity
+	ecc = psr_m.ECC.quantity
+	sp = fitval['s0']/(1-fitval['s'])
+	i = fitval['i']
+
 	K0 = 0.5*V0*V0*(Qabc[0]+Qabc[1]*(np.cos(i))**2) + Qabc[0]*(VC[0]-V0*ecc*np.sin(omega))**2
 	K0 = K0 + Qabc[1]*(VC[1]+V0*ecc*np.cos(omega)*np.cos(i))**2
 	K0 = K0 + Qabc[2]*(VC[0]-V0*ecc*np.sin(omega))*(VC[1]+V0*ecc*np.cos(omega)*np.cos(i))
@@ -182,6 +192,7 @@ def K_coeffs(V0,VC,Qabc,i,omega,ecc,sp):
 	KC2 = KC2.to(u.m*u.m/(u.s*u.s))
 
 	return [K0/(sp*sp) ,KS/(sp*sp) ,KC/(sp*sp) ,KS2/(sp*sp) ,KC2/(sp*sp)]
+
 
 def TISS(K,phi):
 	"""This function returns the interstellar scintillation timescale
