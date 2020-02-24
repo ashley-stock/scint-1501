@@ -13,13 +13,13 @@ from astropy import constants as const
 #-------------------------------------------------------------------------------------
 #Fitted values from Table 3 of Rickett et al 2014
 #-------------------------------------------------------------------------------------
-i = 88.7*u.deg
-s = 0.71
-Oangle = 61*u.deg
-R = 0.71
-PsiAR = 61*u.deg
-VIS = np.array([-9,42])*u.km/u.s
-s0 = 4.2e6*u.m
+fitval90 = {'i':90.*u.deg,'s':0.71,'Oangle' : 69*u.deg,'R' : 0.76,'PsiAR' : 72*u.deg,'VIS' : np.array([-12,50])*u.km/u.s, 's0' : 4.2e6*u.m, 'dpc' : 1150*u.pc}
+
+fitval88 = {'i':88.7*u.deg,'s':0.71,'Oangle' : 61*u.deg,'R' : 0.71,'PsiAR' : 61*u.deg,'VIS' : np.array([-9,42])*u.km/u.s, 's0' : 4.2e6*u.m, 'dpc' : 1150*u.pc}
+
+fitval91 = {'i':91.3*u.deg,'s':0.70,'Oangle' : 111*u.deg,'R' : 0.96,'PsiAR' : 118*u.deg,'VIS' : np.array([-79,100])*u.km/u.s, 's0' : 4.2e6*u.m, 'dpc' : 1150*u.pc}
+
+fitval = fitval88 #current default as 88.7 deg fit
 #--------------------------------------------------------------------------------------
 # Other constant values
 #--------------------------------------------------------------------------------------
@@ -58,7 +58,7 @@ def OrbitMeanVel(PB,SMA,ECC):
 	"""
 	return (2*np.pi*SMA/(PB*np.sqrt(1-ECC*ECC))).to(u.km/u.s)
 
-def SpatialScale(s0=s0,s=s):
+def SpatialScale(s0,s):
 	"""This function calculates the unitless spatial scale in the pulsar frame.
 	Parameters:
 		s0: the mean diffractive scale (units of length), float
@@ -116,13 +116,15 @@ def SystemVel(t_start,t_end,t_nsteps,fitval,psr):
 	"""This function calculates the system velocity in the pulsar frame
 	as defined in equation 6 of Rickett et al. 2014.
 	Parameters:
-		t_start : initial time of observation, integer (for now)
-		t_end : last time of observation, integer (for now)
-		s : the fractional distance from the pulsar to the scintillation screen, float
-		Oangle: the angle needed to rotate onto x-y plane in radians, float
-		psr : a SkyCoordinate object representation of the pulsar
-		VIS : the best fit velocity of the interstellar scintillation screen,
+		t_start : initial time of observation, integer
+		t_end : last time of observation, integer
+		t_nsteps : number of days to calculate the system velocity for, integer
+		fitval : a dictionary of fitted physical parameters must include:
+		---s : the fractional distance from the pulsar to the scintillation screen (unitless), float
+		---VIS : the best fit velocity of the interstellar scintillation screen,
 			np array with two floats for x and y velocity
+		---Oangle : the angle needed to rotate RA/Dec coordinates onto x-y plane, float
+		psr : a SkyCoordinate object representation of the pulsar
 	Returns:
 		VC: np array with two floats, representing x and y tranverse system velocity
 	"""
@@ -145,7 +147,7 @@ def SystemVel(t_start,t_end,t_nsteps,fitval,psr):
 	VC = np.ones((t_nsteps,2))
 	i = 0
 	for v in VE:
-		VC[i] = np.add(np.add(VP,v*u.km/u.s*s/(1-s)),-fitval['VIS']/(1-fitval['s']))
+		VC[i] = np.add(np.add(VP,v*u.km/u.s*fitval['s']/(1-fitval['s'])),-fitval['VIS']/(1-fitval['s']))
 		i +=1
 	return np.array(VC)*u.km/u.s
 
@@ -153,13 +155,19 @@ def K_coeffs(t_start, fitval, psr, psr_m):
 	"""This function calculates the orbital harmonic coefficients for the scintillation
 	timescale as defined in equation 10 of Rickett et al. 2014.
 	Parameters:
-		V0: the mean orbital velocity of the binary pulsar system, float
-		VC: related to scintillation velocity (eq.6), array of two floats [VCX,VCY]
-		Qabc: quadratic coefficients (eq. 4), array of three floats [a,b,c]
-		i : inclination angle in radians, float
-		omega: longitude of periastron in radians, float
-		ecc: eccentricity of binary pulsar orbit, float
-		sp: scintillation spatial scale, float
+		t_start : day of observation in MJD, integer
+		fitval :  a dictionary of fitted physical parameters must include:
+		---R : a unitless bounded parameter related to the axial ratio, with range 0 to 1
+		where 0 describes a circle and 1 describes a line
+		---PsiAR : angle describing orientation of the major axis of screen from x axis
+		---s0 : the mean diffractive scale (units of length), float
+		---i : inclination angle of orbit, float
+		---s : the fractional distance from the pulsar to the scintillation screen (unitless), float
+		---VIS : the best fit velocity of the interstellar scintillation screen,
+			np array with two floats for x and y velocity
+		---Oangle : the angle needed to rotate RA/Dec coordinates onto x-y plane, float
+		psr : a SkyCoordinate object representation of the pulsar
+		psr_ m : pint model of pulsar (determined from par file)
 	Returns:
 		[K0,KS,KC,KS2,KC2]: an array of orbital harmonic coefficients, floats
 	"""
@@ -213,12 +221,21 @@ def k_norm(t_start,t_end,t_nsteps,fitval,psr,psr_m,bm):
 	These variables combine to give normalized harmonic coefficients ks and k0, which are output by this
 	function.
 	Parameters:
-		VC: related to scintillation velocity (eq.6), array of two floats [VCX,VCY]
+		t_start : initial time of observation, integer
+		t_end : last time of observation, integer
+		t_nsteps : number of days to calculate the system velocity for, integer
+		fitval : a dictionary of fitted physical parameters must include:
+		---s : the fractional distance from the pulsar to the scintillation screen (unitless), float
+		---VIS : the best fit velocity of the interstellar scintillation screen,
+			np array with two floats for x and y velocity
+		---Oangle : the angle needed to rotate RA/Dec coordinates onto x-y plane, float
+		---R : a unitless bounded parameter related to the axial ratio, with range 0 to 1
+		where 0 describes a circle and 1 describes a line
+		---PsiAR : angle describing orientation of the major axis of screen from x axis
+		---i : inclination angle of orbit, float
+		psr : a SkyCoordinate object representation of the pulsar
 		psr_m: pint model of pulsar (determined from par file)
 		bm: pint binary instance of pulsar
-		V0: the mean orbital velocity of the binary pulsar system, float
-		Qabc: quadratic coefficients (eq. 4), array of three floats [a,b,c]
-		i: inclination angle in radians, float
 	Returns:
 		[ks,k0]: an array of unitless normalized harmonic coefficients, floats
 		from eq. 14 of Rickett
