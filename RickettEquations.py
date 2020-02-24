@@ -1,5 +1,4 @@
 import numpy as np
-import math
 from astropy import units as u
 from astropy.coordinates import EarthLocation, SkyOffsetFrame, SkyCoord
 from pint.models import get_model
@@ -57,7 +56,7 @@ def OrbitMeanVel(PB,SMA,ECC):
 	Returns:
 		V0: the mean orbital velocity in km/s, float
 	"""
-	return (2*math.pi*SMA/(PB*np.sqrt(1-ECC*ECC))).to(u.km/u.s)
+	return (2*np.pi*SMA/(PB*np.sqrt(1-ECC*ECC))).to(u.km/u.s)
 
 def SpatialScale(s0=s0,s=s):
 	"""This function calculates the unitless spatial scale in the pulsar frame.
@@ -209,13 +208,13 @@ def TISS(K,phi):
 	in_T = (K[0].value+K[1].value*np.sin(phi) + K[2].value*np.cos(phi) +K[3].value*np.sin(2*phi) + K[4].value*np.cos(2*phi))
 	return np.sqrt(1/in_T)
 
-def k_norm(VC,m,bm,V0,Qabc,i):
+def k_norm(t_start,t_end,t_nsteps,fitval,psr,psr_m,bm):
 	"""This function calculates the values of ux, uy, and w from equation 13 of Rickett et al 2014.
 	These variables combine to give normalized harmonic coefficients ks and k0, which are output by this
 	function.
 	Parameters:
 		VC: related to scintillation velocity (eq.6), array of two floats [VCX,VCY]
-		m: pint model of pulsar (determined from par file)
+		psr_m: pint model of pulsar (determined from par file)
 		bm: pint binary instance of pulsar
 		V0: the mean orbital velocity of the binary pulsar system, float
 		Qabc: quadratic coefficients (eq. 4), array of three floats [a,b,c]
@@ -224,8 +223,14 @@ def k_norm(VC,m,bm,V0,Qabc,i):
 		[ks,k0]: an array of unitless normalized harmonic coefficients, floats
 		from eq. 14 of Rickett
 	"""
-	ux = VC[:,0]/V0 -np.array(m.ECC.quantity*np.sin(bm.omega()))
-	uy = math.sqrt(Qabc[1]/Qabc[0])*(VC[:,1]/V0 + m.ECC.quantity*np.cos(i)*np.cos(bm.omega()))
-	w = Qabc[2]/math.sqrt(Qabc[0]*Qabc[1])
+	VC = SystemVel(t_start,t_end,t_nsteps,fitval,psr)
+	SMA = (psr_m.A1.quantity/psr_m.SINI.quantity) #convert projected semi major axis to actual value
+	V0 = OrbitMeanVel(psr_m.PB.quantity,SMA,psr_m.ECC.quantity)
+	Qabc = Q_coeff(fitval['R'],fitval['PsiAR'])
+	i = fitval['i']
+	
+	ux = VC[:,0]/V0 -np.array(psr_m.ECC.quantity*np.sin(bm.omega()))
+	uy = np.sqrt(Qabc[1]/Qabc[0])*(VC[:,1]/V0 + psr_m.ECC.quantity*np.cos(i)*np.cos(bm.omega()))
+	w = Qabc[2]/np.sqrt(Qabc[0]*Qabc[1])
 	return [4*ux+2*w*uy,-1-2*ux*ux - 2*w*ux*uy - 2*uy*uy]
 
