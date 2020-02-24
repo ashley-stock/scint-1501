@@ -60,7 +60,7 @@ if (plot_TISS):
 
 	fitval = fitval90
 
-	fitval['s0'] = 6.6e6*u.m
+	fitval['s0'] = 6.1e6*u.m
 	
 	#Calculate K coefficients
 	Ks0 = K_coeffs(t_start,fitval,psr,psr_m)
@@ -75,7 +75,7 @@ if (plot_TISS):
 
 	fitval = fitval91
 
-	fitval['s0'] = 10.1e6*u.m
+	fitval['s0'] = 9.3e6*u.m
 
 	Ks0 = K_coeffs(t_start,fitval,psr,psr_m)
 
@@ -90,7 +90,7 @@ if (plot_TISS):
 	ax.plot(np.degrees(phi),TS_plot, label='i=91.3$^\circ$')
 
 	fitval = fitval88
-	fitval['s0'] = 6.1e6*u.m
+	fitval['s0'] = 5.7e6*u.m
 
 	Ks0 = K_coeffs(t_start,fitval,psr,psr_m)
 	print('K Coefficients for i = 88.7', Ks0)
@@ -103,7 +103,7 @@ if (plot_TISS):
 
 	ax.plot(np.degrees(phi),TS_plot, label='i=88.7$^\circ$')
 
-	tiss_data = Table.read('Rickett/P0737_obs/52997/52997.tiss5t',format='ascii.no_header',data_start=11,names=('phi','T_iss','T_iss_error'))
+	tiss_data = Table.read('53467.tiss5t',format='ascii.no_header',data_start=11,names=('phi','T_iss','T_iss_error'))
 
 	
 	plt.errorbar(tiss_data['phi'],tiss_data['T_iss'],yerr=tiss_data['T_iss_error'],fmt = 'o',label='Data')
@@ -228,7 +228,7 @@ if (plot_knorm_VIS_dec):
 	[ks,k0] = k_norm(t_start,t_end,t_nsteps,fitval,psr,psr_m,bm)
 
 	plt.plot(times,ks,"b-", label='VIS,par = VIS,par/2')
-	plt.plot(times,k0,"b--")
+	plt.plot(times,k0,"b--from astropy.coordinates import EarthLocation, SkyOffsetFrame")
 
 	VIS = RotateVector(VIS0,-fitval['PsiAR']) #Rotate into parallel and perpendicular axes
 	VIS[1] = 0*u.km/u.s #Decrease parallel axis
