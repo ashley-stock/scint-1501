@@ -246,8 +246,8 @@ def K_coeffs(t_start, fitval, psr, psr_m):
 
     Parameters
     ----------
-    t_start : int
-        MJD of observation.
+    t_start : int, or tuple
+        MJD of observation, or tuple of start, stop, N
     fitval : dict
         Physical physical parameters, which must include:
         s : fractional distance from the pulsar to the scintillation screen.
@@ -275,7 +275,9 @@ def K_coeffs(t_start, fitval, psr, psr_m):
     # convert projected semi major axis to actual value
     SMA = (psr_m.A1.quantity / psr_m.SINI.quantity)
     V0 = OrbitMeanVel(psr_m.PB.quantity, SMA, psr_m.ECC.quantity)
-    VC = SystemVel(t_start, t_start + 1, 1, fitval, psr)[0]
+    if not isinstance(t_start, tuple):
+        t_start = (t_start, t_start + 1, 1)
+    VC = SystemVel(*t_start, fitval, psr).T
     Qabc = Q_coeff(fitval['R'], fitval['PsiAR'])
     omega = psr_m.OM.quantity
     ecc = psr_m.ECC.quantity
