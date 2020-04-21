@@ -18,8 +18,6 @@ def calcKcoeff(fitval):
             for K in (K0, KS, KC, KS2)]
 
 
-# In[2]:
-
 k_fit = harmonics['value']
 k_err = harmonics['error']
 

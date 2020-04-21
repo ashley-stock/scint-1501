@@ -349,6 +349,6 @@ def k_norm(t_start, t_end, t_nsteps, fitval, psr, psr_m, bm):
     uy = (np.sqrt(Qabc[1] / Qabc[0]) * (VC[:, 1] / V0
                                         + (psr_m.ECC.quantity * np.cos(i)
                                            * np.cos(bm.omega())))).to_value(1)
-    w = (Qabc[2] / np.sqrt(Qabc[0] * Qabc[1])).to_value(1)
+    w = Qabc[2] / np.sqrt(Qabc[0] * Qabc[1])
     return [4 * ux + 2 * w * uy,
             -1 - 2 * ux * ux - 2 * w * ux * uy - 2 * uy * uy]
