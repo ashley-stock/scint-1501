@@ -3,51 +3,9 @@ from astropy import units as u
 from astropy.coordinates import EarthLocation, SkyOffsetFrame
 from astropy.time import Time
 
-
 """TODO:
 -Make functions so they have default values
 """
-
-# ------------------------------------------------------------------------------
-# Fitted values from Table 3 of Rickett et al 2014
-# ------------------------------------------------------------------------------
-fitval90 = {'i': 90. * u.deg,
-            's': 0.71,
-            'Oangle': 69 * u.deg,
-            'R': 0.76,
-            'PsiAR': 72 * u.deg,
-            'VIS': [-12, 50] * u.km / u.s,
-            's0': 4.2e6 * u.m,
-            'dpsr': 1150 * u.pc}
-
-fitval88 = {'i': 88.7 * u.deg,
-            's': 0.71,
-            'Oangle': 61 * u.deg,
-            'R': 0.71,
-            'PsiAR': 61 * u.deg,
-            'VIS': [-9, 42] * u.km / u.s,
-            's0': 4.2e6 * u.m,
-            'dpsr': 1150 * u.pc}
-
-fitval91 = {'i': 91.3 * u.deg,
-            's': 0.70,
-            'Oangle': 111 * u.deg,
-            'R': 0.96,
-            'PsiAR': 118 * u.deg,
-            'VIS': [-79, 100] * u.km / u.s,
-            's0': 4.2e6 * u.m,
-            'dpsr': 1150 * u.pc}
-
-fitval = fitval88  # current default as 88.7 deg fit
-# -----------------------------------------------------------------------------
-# Other values
-# -----------------------------------------------------------------------------
-t_start = 52997  # 52997
-t_end = 53561  # 53561
-t_nsteps = 1000  # 564 #564
-lt_s = u.Unit('lt_s', u.lightyear / u.yr * u.s)
-
-# -----------------------------------------------------------------------------
 
 
 def Q_coeff(R, Psi_AR):
@@ -246,8 +204,8 @@ def K_coeffs(t_start, fitval, psr, psr_m):
 
     Parameters
     ----------
-    t_start : int
-        MJD of observation.
+    t_start : int, or tuple
+        MJD of observation, or tuple of start, stop, N
     fitval : dict
         Physical physical parameters, which must include:
         s : fractional distance from the pulsar to the scintillation screen.
@@ -275,7 +233,9 @@ def K_coeffs(t_start, fitval, psr, psr_m):
     # convert projected semi major axis to actual value
     SMA = (psr_m.A1.quantity / psr_m.SINI.quantity)
     V0 = OrbitMeanVel(psr_m.PB.quantity, SMA, psr_m.ECC.quantity)
-    VC = SystemVel(t_start, t_start + 1, 1, fitval, psr)[0]
+    if not isinstance(t_start, tuple):
+        t_start = (t_start, t_start + 1, 1)
+    VC = SystemVel(*t_start, fitval, psr).T
     Qabc = Q_coeff(fitval['R'], fitval['PsiAR'])
     omega = psr_m.OM.quantity
     ecc = psr_m.ECC.quantity
@@ -389,6 +349,6 @@ def k_norm(t_start, t_end, t_nsteps, fitval, psr, psr_m, bm):
     uy = (np.sqrt(Qabc[1] / Qabc[0]) * (VC[:, 1] / V0
                                         + (psr_m.ECC.quantity * np.cos(i)
                                            * np.cos(bm.omega())))).to_value(1)
-    w = (Qabc[2] / np.sqrt(Qabc[0] * Qabc[1])).to_value(1)
+    w = Qabc[2] / np.sqrt(Qabc[0] * Qabc[1])
     return [4 * ux + 2 * w * uy,
             -1 - 2 * ux * ux - 2 * w * ux * uy - 2 * uy * uy]
