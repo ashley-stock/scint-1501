@@ -3,51 +3,9 @@ from astropy import units as u
 from astropy.coordinates import EarthLocation, SkyOffsetFrame
 from astropy.time import Time
 
-
 """TODO:
 -Make functions so they have default values
 """
-
-# ------------------------------------------------------------------------------
-# Fitted values from Table 3 of Rickett et al 2014
-# ------------------------------------------------------------------------------
-fitval90 = {'i': 90. * u.deg,
-            's': 0.71,
-            'Oangle': 69 * u.deg,
-            'R': 0.76,
-            'PsiAR': 72 * u.deg,
-            'VIS': [-12, 50] * u.km / u.s,
-            's0': 4.2e6 * u.m,
-            'dpsr': 1150 * u.pc}
-
-fitval88 = {'i': 88.7 * u.deg,
-            's': 0.71,
-            'Oangle': 61 * u.deg,
-            'R': 0.71,
-            'PsiAR': 61 * u.deg,
-            'VIS': [-9, 42] * u.km / u.s,
-            's0': 4.2e6 * u.m,
-            'dpsr': 1150 * u.pc}
-
-fitval91 = {'i': 91.3 * u.deg,
-            's': 0.70,
-            'Oangle': 111 * u.deg,
-            'R': 0.96,
-            'PsiAR': 118 * u.deg,
-            'VIS': [-79, 100] * u.km / u.s,
-            's0': 4.2e6 * u.m,
-            'dpsr': 1150 * u.pc}
-
-fitval = fitval88  # current default as 88.7 deg fit
-# -----------------------------------------------------------------------------
-# Other values
-# -----------------------------------------------------------------------------
-t_start = 52997  # 52997
-t_end = 53561  # 53561
-t_nsteps = 1000  # 564 #564
-lt_s = u.Unit('lt_s', u.lightyear / u.yr * u.s)
-
-# -----------------------------------------------------------------------------
 
 
 def Q_coeff(R, Psi_AR):
