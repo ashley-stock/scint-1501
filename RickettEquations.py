@@ -92,7 +92,7 @@ def EarthVelocity(t, site, psr, rot):
     Returns
     -------
     v_earth : `~astropy.units.Quantity`
-        Site XYZ velocities in units of km/s, with X and Y giving the
+        Site XYZ velocities in units of km/s, with Y and Z giving the
         velocities in the RA and DEC directions.
     """
     psr_frame = SkyOffsetFrame(origin=psr, rotation=rot)
