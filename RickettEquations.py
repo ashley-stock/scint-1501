@@ -181,12 +181,13 @@ def SystemVel(t_start, t_end, t_nsteps, fitval, psr):
                              fitval['Oangle'])
 
     # Calculate pulsar velocity
-    # Just use values from paper for now
-    VP = np.array([-17.8, 11.6]) * u.km / u.s
-    VP = RotateVector(VP, fitval['Oangle'])  # rotate pulsar velocity by Oangle
+    # Uncomment next two lines if want to just use values from Rickett et al. 2014
+    #VP = np.array([-17.8, 11.6]) * u.km / u.s
+    #VP = RotateVector(VP, fitval['Oangle'])  # rotate pulsar velocity by Oangle
 
-    # Otherwise
-    # VP = PulsarBCVelocity(psr)[1:3]
+    # Comment these two lines if using values from Rickett et al. 2014
+    vpsr = PulsarBCVelocity(psr)
+    VP = RotateVector([vpsr.d_y,vpsr.d_z], fitval['Oangle'])  # rotate pulsar velocity by Oangle
 
     VC = u.Quantity(np.ones((t_nsteps, 2)), u.km/u.s)
     for i, v in enumerate(VE):
